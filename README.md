@@ -1,3 +1,73 @@
+# Sales Funnel Analytics — Pipedrive
+
+Solution to the Analytics Engineer take-home assessment. The original
+brief is preserved below under **Assessment Brief**.
+
+## Prerequisites
+
+- Docker Desktop (WSL 2 backend on Windows)
+- Python 3.12
+- Git
+
+## Setup
+
+```bash
+# 1. Start Postgres and load the raw CSV data
+docker compose up -d
+
+# 2. Verify the loader finished successfully
+docker compose logs data_loader
+
+# 3. Create an isolated Python environment
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1        # Windows
+# source .venv/bin/activate         # macOS / Linux
+
+# 4. Install dbt
+pip install dbt-core dbt-postgres
+
+# 5. Verify the connection and build the models
+dbt debug
+dbt run
+```
+
+Results are written to the `public_pipedrive_analytics` schema. Connection
+details are in `profiles.yml` (host `localhost`, port `5432`, user/password
+`admin`).
+
+Use `docker compose stop` rather than `down` between sessions — no volume is
+mounted for the database, so `down` discards the loaded data and requires a
+full reload on the next start.
+
+### Note for Windows users
+
+`.gitattributes` enforces LF line endings for `*.sh`. Without it, Git's
+automatic CRLF conversion breaks `raw_data/load_data.sh` inside the Linux
+container and the data load fails silently with a shell syntax error.
+
+## Project structure
+
+| Layer | Path | Materialization | Purpose |
+| --- | --- | --- | --- |
+| Staging | `models/staging/` | view | One model per source table; renaming and type casting only |
+| Intermediate | `models/intermediate/` | view | Reusable transformation steps |
+| Marts | `models/marts/` | table | Reporting models consumed downstream |
+
+Source tables are declared in `models/sources.yml`. A flat layer structure was
+chosen deliberately: the project has a single source system and a single
+consuming domain, so the conventional `staging/<source>/` and
+`marts/<domain>/` subdirectories would add nesting without adding meaning.
+Source affiliation is carried in model names instead
+(`stg_pipedrive__<entity>`).
+
+## Modelling decisions
+
+_To be completed._
+
+---
+
+# Assessment Brief
+
 ## Setup
 
 1. Download Docker Desktop (if you don’t have installed) using the official website, install and launch.
