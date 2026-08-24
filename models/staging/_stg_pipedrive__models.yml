@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  - name: stg_pipedrive__deal_changes
+    description: >
+      Field-level change log for deals. Grain is one row per deal, timestamp
+      and changed field. new_value is kept as text; casting depends on
+      changed_field_key and happens downstream.
+    columns:
+      - name: deal_id
+        description: Deal the change belongs to.
+        data_tests:
+          - not_null
+      - name: change_time
+        description: Timestamp of the change.
+        data_tests:
+          - not_null
+      - name: changed_field_key
+        description: Which field was changed; joins to stg_pipedrive__fields.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['stage_id', 'user_id', 'add_time', 'lost_reason']
+      - name: new_value
+        description: New value as text, semantics depend on changed_field_key.
+
+  - name: stg_pipedrive__stages
+    description: Pipeline stages. stage_id also defines funnel order.
+    columns:
+      - name: stage_id
+        data_tests:
+          - unique
+          - not_null
+      - name: stage_name
+        data_tests:
+          - unique
+          - not_null
+
+  - name: stg_pipedrive__activity
+    description: >
+      Activities logged against deals. Grain is one row per activity.
+      Note the source has no creation timestamp, only a due date.
+    columns:
+      - name: activity_id
+        data_tests:
+          - not_null
+      - name: activity_type_key
+        description: Joins to stg_pipedrive__activity_types.activity_type_key.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_pipedrive__activity_types')
+              field: activity_type_key
+      - name: deal_id
+        data_tests:
+          - not_null
+      - name: is_done
+        description: Whether the activity was completed.
+      - name: due_at
+        description: Due date of the activity; used as the event timestamp.
+
+  - name: stg_pipedrive__activity_types
+    description: Lookup for activity types.
+    columns:
+      - name: activity_type_id
+        data_tests:
+          - unique
+          - not_null
+      - name: activity_type_key
+        description: Natural key used to join from stg_pipedrive__activity.
+        data_tests:
+          - unique
+          - not_null
+      - name: activity_name
+        data_tests:
+          - not_null
+      - name: is_active
+        description: Derived from the source's 'Yes'/'No' string.
+
+  - name: stg_pipedrive__users
+    description: CRM users. Not all users own deals.
+    columns:
+      - name: user_id
+        data_tests:
+          - unique
+          - not_null
+      - name: user_name
+        data_tests:
+          - not_null
+
+  - name: stg_pipedrive__fields
+    description: >
+      Field metadata registry. field_value_options holds the JSONB label
+      mapping for dropdown fields such as lost_reason.
+    columns:
+      - name: field_id
+        data_tests:
+          - unique
+          - not_null
+      - name: field_key
+        data_tests:
+          - unique
+          - not_null
