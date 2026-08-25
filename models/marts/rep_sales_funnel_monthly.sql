@@ -36,7 +36,7 @@ funnel_steps as (
 scaffold as (
 
     select
-        m.date_month as month,
+        cast(m.date_month as date) as month,
         fs.kpi_name,
         fs.funnel_step
     from months m
