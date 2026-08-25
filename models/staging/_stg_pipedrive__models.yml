@@ -20,7 +20,8 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ['stage_id', 'user_id', 'add_time', 'lost_reason']
+              arguments:
+                values: ['stage_id', 'user_id', 'add_time', 'lost_reason']
       - name: new_value
         description: New value as text, semantics depend on changed_field_key.
 
@@ -49,8 +50,9 @@ models:
         data_tests:
           - not_null
           - relationships:
-              to: ref('stg_pipedrive__activity_types')
-              field: activity_type_key
+              arguments:
+                to: ref('stg_pipedrive__activity_types')
+                field: activity_type_key
       - name: deal_id
         data_tests:
           - not_null

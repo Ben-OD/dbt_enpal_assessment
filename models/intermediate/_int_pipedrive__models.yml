@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: int_pipedrive__deal_stage_events
+    description: >
+      First entry per deal and pipeline stage. Derived from stage_id changes
+      in the deal change log; re-entries into a stage are collapsed to the
+      earliest occurrence.
+    columns:
+      - name: deal_id
+        data_tests:
+          - not_null
+      - name: stage_id
+        description: Joins to stg_pipedrive__stages; also defines funnel order.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_pipedrive__stages')
+                field: stage_id
+      - name: stage_name
+        data_tests:
+          - not_null
+      - name: entered_at
+        description: Timestamp of the first entry into this stage.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - deal_id
+              - stage_id
+
+  - name: int_pipedrive__deal_call_events
+    description: >
+      First completed sales call per deal and call type. Only activities with
+      is_done = true are counted; due_at is used as the event timestamp since
+      the source has no completion date.
+    columns:
+      - name: deal_id
+        data_tests:
+          - not_null
+      - name: activity_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Sales Call 1', 'Sales Call 2']
+      - name: called_at
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - deal_id
+              - activity_name
