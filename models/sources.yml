@@ -1,8 +1,27 @@
 version: 2
 
 sources:
-  - name: postgres_public
+  - name: pipedrive
+    description: >
+      Raw Pipedrive CRM export, loaded from CSV into the local Postgres
+      instance by the data_loader container on startup.
     database: postgres
     schema: public
     tables:
+      - name: deal_changes
+        description: >
+          Field-level change log for deals (entity-attribute-value).
+          One row per changed field, with new_value stored as text
+          regardless of the field's underlying type.
       - name: activity
+        description: Activities logged against deals, e.g. calls and meetings.
+      - name: activity_types
+        description: Lookup for activity types; joins to activity on type.
+      - name: stages
+        description: Pipeline stages, ordered by stage_id.
+      - name: users
+        description: CRM users who own deals.
+      - name: fields
+        description: >
+          Field metadata registry. field_value_options holds the label
+          mapping for dropdown fields such as lost_reason.
