@@ -35,9 +35,10 @@ dbt debug
 dbt build
 ```
 
-`dbt build` runs all ten models and 57 tests. Results are written to the
-`public_pipedrive_analytics` schema; connection details are in `profiles.yml`
-(host `localhost`, port `5432`, user/password `admin`).
+`dbt build` loads the seed, runs all ten models and executes 53 tests — 64 nodes
+in total. Results are written to the `public_pipedrive_analytics` schema;
+connection details are in `profiles.yml` (host `localhost`, port `5432`,
+user/password `admin`).
 
 Use `docker compose stop` rather than `down` between sessions. No volume is
 mounted for the database, so `down` discards the loaded data and forces a full
@@ -57,13 +58,15 @@ succeeds, leaving empty tables and no obvious cause.
 | Staging | `models/staging/` | view | One model per source table; renaming and type casting only |
 | Intermediate | `models/intermediate/` | view | Event extraction and unification |
 | Marts | `models/marts/` | table | Reporting model |
+| Seeds | `seeds/` | table | Reference list of funnel steps |
 
 ```
 stg_pipedrive__deal_changes  ─┐
 stg_pipedrive__stages        ─┴─→ int_pipedrive__deal_stage_events  ─┐
-                                                                     ├─→ int_pipedrive__funnel_events ─→ rep_sales_funnel_monthly
-stg_pipedrive__activity      ─┐                                      │
-stg_pipedrive__activity_types─┴─→ int_pipedrive__deal_call_events   ─┘
+                                                                     ├─→ int_pipedrive__funnel_events ─┐
+stg_pipedrive__activity      ─┐                                      │                                 ├─→ rep_sales_funnel_monthly
+stg_pipedrive__activity_types─┴─→ int_pipedrive__deal_call_events   ─┘                                 │
+                                                                       funnel_steps (seed) ────────────┘
 ```
 
 A flat layer structure was chosen deliberately. The project has a single source
@@ -99,12 +102,9 @@ Because the type of `new_value` depends on the field key in the same row, no
 casting happens in staging. It is deferred to the intermediate layer, where the
 filter on `changed_field_key` makes the type unambiguous.
 
-The data covers 2,000 deals (1,995 distinct IDs in the change log). Every deal
-has a `stage_id = 1` entry, so step 1 is derived from the stage history rather
-than from `add_time`. Per deal, the ordering is consistently
-`add_time` → `user_id` → `stage_id = 1` → subsequent stages; 2,508 of 2,514
-owner assignments precede the stage-1 entry, so ownership is essentially a
-pre-funnel event.
+The data covers 2,000 deal creations across 1,995 distinct IDs. Every deal has
+a `stage_id = 1` entry, so step 1 is derived from the stage history rather than
+from `add_time`.
 
 Deals skip stages freely (e.g. deal 881836 goes 1 → 2 → 3 → 4 → 6), and 15
 deal-stage combinations occur more than once, i.e. deals occasionally re-enter a
@@ -173,7 +173,9 @@ relying on that inconsistency.
 month it first reached that step. This is the standard funnel reading and is
 applied consistently to stages and calls. The alternatives — deals *in* a step
 at month end, or a cumulative count — would answer different questions and are
-not what "funnel steps" implies.
+not what "funnel steps" implies. Choosing the first arrival also keeps past
+periods immutable: a later re-entry never changes an already reported month,
+which a last-arrival reading would.
 
 **Re-entries collapse to the earliest occurrence.** Where a deal enters a stage
 more than once, only the first entry counts. The opposite reading is defensible
@@ -197,23 +199,34 @@ arbitrary rule with no benefit here.
 
 **`kpi_name` follows the source spelling.** `stages.stage_name` contains
 "Qualified lead" in lower case, while both the brief and
-`fields.field_value_options` capitalise it. `stages` is the master data table
-for stages; `fields` is a UI metadata registry. Where they disagree, master data
-wins. This is the one place where the output deviates cosmetically from the
-brief.
+`fields.field_value_options` capitalise it. `stages` is the dedicated table for
+stage master data, whereas `fields` carries the label as part of a
+field-configuration blob; where they disagree, the dedicated table wins. This is
+the one place where the output deviates cosmetically from the brief.
 
 **`funnel_step` is text.** The sub-steps 2.1 and 3.1 rule out an integer, and the
 brief fixes the output at four columns, ruling out a split into major/minor
-columns. A numeric type would render 2.1 as 2.10. Known limitation:
-lexicographic sorting happens to match numeric order for steps 1–9 but would
-break if the funnel ever exceeded nine main steps.
+columns. A numeric type would work mechanically but misrepresents the column:
+`funnel_step` is an identifier, not a quantity — 2.1 denotes the first sub-step
+of step 2, not the value two point one. Sorting is therefore handled by an
+explicit `step_order` column in the `funnel_steps` seed rather than by the text
+value, which would place '10' directly after '1' should the funnel ever exceed
+nine main steps.
 
-**The month grid is derived from the data and gap-free.** Rather than hard-coding
-a date range, the model queries the actual bounds of `event_at` at compile time
-via `run_query` and feeds them into `dbt_utils.date_spine`. The spine is crossed
-with all distinct funnel steps, so months in which a step saw no arrivals appear
-with `deals_count = 0` instead of being absent. Downstream charts get a
-continuous series without having to reconstruct missing periods.
+**Both axes of the report are complete.** The month range is not hard-coded: the
+model queries the actual bounds of `event_at` at compile time via `run_query` and
+feeds them into `dbt_utils.date_spine`. That spine is crossed with the full step
+list from the `funnel_steps` seed, so every month × step combination exists.
+Months in which a step saw no arrivals appear with `deals_count = 0` instead of
+being absent, and a step no deal ever reached would still be present in every
+month rather than vanishing from the report. Downstream charts get a continuous
+series without having to reconstruct missing rows.
+
+**The seed defines the steps, the data defines the labels.** `funnel_steps.csv`
+holds the eleven steps required by the brief with their numbering and sort order.
+`kpi_name`, however, is taken from the observed events wherever they exist; the
+seed's label serves only as a fallback for steps with no data. This keeps the
+step list authoritative without overriding the source spelling decision above.
 
 ## How to read the report
 
@@ -228,17 +241,20 @@ lifecycle. The funnel shape is visible in the totals across the whole period
 (1,995 → 1,479 → 1,305 → 1,086 → 894 → 741 → 588 → 479 → 324), not within a
 month.
 
-Two edge effects follow from the observation window: January 2024 is sparse
-because the dataset starts there, and from October 2024 onwards the sales-call
-rows are zero because activity data ends in September. From December 2024, lead
-generation dries up while later stages still show movement — the final cohorts
-working their way through.
+Two edge effects follow from the observation window. In January 2024 the later
+steps are still empty because no deal has had time to reach them, and from
+October 2024 onwards the sales-call rows are zero because activity data ends in
+September. From December 2024, lead generation stops while later stages still
+show movement — the final cohorts working their way through.
 
 ## Testing
 
-57 tests run as part of `dbt build`:
+53 tests run as part of `dbt build`:
 
 - `not_null` and `unique` on all keys, `relationships` on every foreign key
+- `relationships` from `int_pipedrive__funnel_events.funnel_step` to the
+  `funnel_steps` seed, so a step present in the data but missing from the
+  reference list fails the build
 - `accepted_values` on `changed_field_key`, `activity_name` and `funnel_step` —
   these encode assumptions from exploration and will fail loudly if the source
   gains an unexpected value
@@ -254,9 +270,6 @@ double-count.
 
 - `due_at` stands in for an actual call timestamp; a source with completion
   dates would remove that approximation
-- The funnel-step list in the mart is derived from observed events. A step never
-  reached by any deal would be missing entirely; a hard-coded reference list
-  would make the report robust against that
 - No conversion rates between steps are calculated. With the cohort mixing
   described above, a meaningful conversion metric would need cohort-based
   modelling (deals grouped by entry month, tracked forward), which the requested

@@ -1,0 +1,12 @@
+funnel_step,kpi_name,step_order
+1,Lead Generation,1
+2,Qualified lead,2
+2.1,Sales Call 1,3
+3,Needs Assessment,4
+3.1,Sales Call 2,5
+4,Proposal/Quote Preparation,6
+5,Negotiation,7
+6,Closing,8
+7,Implementation/Onboarding,9
+8,Follow-up/Customer Success,10
+9,Renewal/Expansion,11

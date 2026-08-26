@@ -34,3 +34,10 @@ models:
       +materialized: view
     marts:
       +materialized: table
+      
+seeds:
+  enpal_assessment_project:
+    funnel_steps:
+      +column_types:
+        funnel_step: varchar
+        step_order: integer

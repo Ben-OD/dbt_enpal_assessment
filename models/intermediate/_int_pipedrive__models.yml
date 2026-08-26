@@ -56,6 +56,7 @@ models:
             combination_of_columns:
               - deal_id
               - activity_name
+
   - name: int_pipedrive__funnel_events
     description: >
       All funnel events in a single shape: one row per deal and funnel step,
@@ -71,11 +72,14 @@ models:
           - not_null
       - name: funnel_step
         description: >
-          Step identifier as text to accommodate sub-steps. Lexicographic
-          sorting happens to match numeric order for steps 1-9; this would
-          break if the funnel ever exceeded nine main steps.
+          Step identifier as text to accommodate sub-steps. The full set of
+          valid steps is defined in the funnel_steps seed.
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('funnel_steps')
+                field: funnel_step
       - name: event_at
         data_tests:
           - not_null

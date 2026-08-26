@@ -1,0 +1,22 @@
+version: 2
+
+seeds:
+  - name: funnel_steps
+    description: >
+      Reference list of the funnel steps required by the brief, including the
+      sub-steps. Provides the complete set of steps for the report scaffold and
+      an explicit sort order, since funnel_step is text and sorts
+      lexicographically. kpi_name is a fallback label only; the report takes its
+      labels from the source data where events exist.
+    columns:
+      - name: funnel_step
+        data_tests:
+          - unique
+          - not_null
+      - name: kpi_name
+        data_tests:
+          - not_null
+      - name: step_order
+        data_tests:
+          - unique
+          - not_null

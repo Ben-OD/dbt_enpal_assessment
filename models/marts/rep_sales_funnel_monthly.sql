@@ -24,11 +24,11 @@ with months as (
 
 ),
 
-funnel_steps as (
+observed_labels as (
 
     select distinct
-        kpi_name,
-        funnel_step
+        funnel_step,
+        kpi_name
     from {{ ref('int_pipedrive__funnel_events') }}
 
 ),
@@ -36,11 +36,14 @@ funnel_steps as (
 scaffold as (
 
     select
-        cast(m.date_month as date) as month,
-        fs.kpi_name,
-        fs.funnel_step
+        cast(m.date_month as date)          as month,
+        fs.funnel_step,
+        coalesce(ol.kpi_name, fs.kpi_name)  as kpi_name,
+        fs.step_order
     from months m
-    cross join funnel_steps fs
+    cross join {{ ref('funnel_steps') }} fs
+    left join observed_labels ol
+        on fs.funnel_step = ol.funnel_step
 
 ),
 
@@ -48,11 +51,10 @@ events_by_month as (
 
     select
         cast(date_trunc('month', event_at) as date) as month,
-        kpi_name,
         funnel_step,
         count(distinct deal_id) as deals_count
     from {{ ref('int_pipedrive__funnel_events') }}
-    group by 1, 2, 3
+    group by 1, 2
 
 )
 
@@ -67,4 +69,4 @@ left join events_by_month e
     on  s.month = e.month
     and s.funnel_step = e.funnel_step
 
-order by s.month, s.funnel_step
+order by s.month, s.step_order
